@@ -7,7 +7,7 @@ from typing import Union
 
 from telethon import types
 from telethon.tl import types as tl_types
-from telethon.tl.functions.folders import CreateChatFolder, DeleteChatFolder, UpdateChatFolder
+from telethon.functions.folders import CreateChatFolder, DeleteChatFolder, UpdateChatFolder
 from telethon.tl.functions.account import GetChatFolders # GetChatFolders находится в telethon.tl.functions.account
 
 from .. import loader, utils
