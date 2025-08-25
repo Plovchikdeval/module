@@ -6,9 +6,9 @@ import logging
 from typing import Union
 
 from telethon import types
-from telethon.tl import types as tl_types
+from telethon import types as types
 from telethon.functions.folders import CreateChatFolder, DeleteChatFolder, UpdateChatFolder
-from telethon.tl.functions.account import GetChatFolders # GetChatFolders находится в telethon.tl.functions.account
+from telethon.functions.account import GetChatFolders # GetChatFolders находится в telethon.functions.account
 
 from .. import loader, utils
 
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 # Определяем объединяющий тип для InputPeer
-InputPeerType = Union[tl_types.InputPeerUser, tl_types.InputPeerChat, tl_types.InputPeerChannel]
+InputPeerType = Union[types.InputPeerUser, types.InputPeerChat, types.InputPeerChannel]
 
 
 @loader.tds
@@ -80,11 +80,11 @@ class FolderManagerMod(loader.Module):
         """Вспомогательная функция для проверки наличия InputPeer в списке InputPeer объектов.
         Сравнивает по ID и типу, игнорируя access_hash для InputPeerUser/InputPeerChannel."""
         for p in peer_list:
-            if isinstance(target_peer_input, tl_types.InputPeerUser) and isinstance(p, tl_types.InputPeerUser) and p.user_id == target_peer_input.user_id:
+            if isinstance(target_peer_input, types.InputPeerUser) and isinstance(p, types.InputPeerUser) and p.user_id == target_peer_input.user_id:
                 return True
-            elif isinstance(target_peer_input, tl_types.InputPeerChat) and isinstance(p, tl_types.InputPeerChat) and p.chat_id == target_peer_input.chat_id:
+            elif isinstance(target_peer_input, types.InputPeerChat) and isinstance(p, types.InputPeerChat) and p.chat_id == target_peer_input.chat_id:
                 return True
-            elif isinstance(target_peer_input, tl_types.InputPeerChannel) and isinstance(p, tl_types.InputPeerChannel) and p.channel_id == target_peer_input.channel_id:
+            elif isinstance(target_peer_input, types.InputPeerChannel) and isinstance(p, types.InputPeerChannel) and p.channel_id == target_peer_input.channel_id:
                 return True
         return False
 
@@ -95,11 +95,11 @@ class FolderManagerMod(loader.Module):
         removed = False
         for p in peer_list:
             is_match = False
-            if isinstance(target_peer_input, tl_types.InputPeerUser) and isinstance(p, tl_types.InputPeerUser) and p.user_id == target_peer_input.user_id:
+            if isinstance(target_peer_input, types.InputPeerUser) and isinstance(p, types.InputPeerUser) and p.user_id == target_peer_input.user_id:
                 is_match = True
-            elif isinstance(target_peer_input, tl_types.InputPeerChat) and isinstance(p, tl_types.InputPeerChat) and p.chat_id == target_peer_input.chat_id:
+            elif isinstance(target_peer_input, types.InputPeerChat) and isinstance(p, types.InputPeerChat) and p.chat_id == target_peer_input.chat_id:
                 is_match = True
-            elif isinstance(target_peer_input, tl_types.InputPeerChannel) and isinstance(p, tl_types.InputPeerChannel) and p.channel_id == target_peer_input.channel_id:
+            elif isinstance(target_peer_input, types.InputPeerChannel) and isinstance(p, types.InputPeerChannel) and p.channel_id == target_peer_input.channel_id:
                 is_match = True
             
             if is_match:
