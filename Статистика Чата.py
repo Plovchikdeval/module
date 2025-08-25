@@ -1,4 +1,4 @@
-# meta developer: @yourhandle
+# meta developer: @Androfon_AI
 # meta name: Статистика Чата
 # meta version: 1.3.9
 
