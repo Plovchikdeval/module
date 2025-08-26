@@ -1,4 +1,4 @@
-# meta developer: @yourhandle
+# meta developer: @Androfon_AI
 # meta name: Шашки
 # meta version: 1.0.4
 #
@@ -10,7 +10,7 @@
 # 00000000000000000000000000000000
 # 00000000000000000000000000000000
 # 00000000000000000000000000000000
-# H:Mods Team [💎]
+# 
 
 import asyncio, html, random
 from .. import loader, utils
@@ -329,14 +329,14 @@ class Checkers(loader.Module):
             await call.answer("Настройки не для вас!")
             return  
         await call.edit(
-            text=f"<emoji document_id=5877260593903177342>⚙</emoji> Настройки этой партии\n"
+            text=f" Настройки этой партии\n"
                  f"| - > Хост играет за {self.colorName} цвет",
             reply_markup=[
                 [
-                    {"text":f"<emoji document_id=5875271289605722323>🍔</emoji> Цвет (хоста): {self.colorName}","callback":self.set_color}
+                    {"text":Цвет (хоста): {self.colorName}","callback":self.set_color}
                 ],
                 [
-                    {"text":"<emoji document_id=5886455371559604605>➡️</emoji> Вернуться","callback":self.back_to_invite}
+                    {"text": Вернуться","callback":self.back_to_invite}
                 ]
             ]
         )
@@ -356,7 +356,7 @@ class Checkers(loader.Module):
                     {"text": "Нет", "callback": self.accept_game, "args":("n",)}
                 ],
                 [
-                    {"text": "<emoji document_id=5877260593903177342>⚙</emoji> Изменить настройки", "callback": self.settings_menu}
+                    {"text":Изменить настройки", "callback": self.settings_menu}
                 ]
             ]
         )
@@ -375,10 +375,10 @@ class Checkers(loader.Module):
                     {"text":("✅ " if self.host_color == "black" else "❌ ") + "Чёрные","callback":self.handle_color_choice,"args":("black","чёрный",)}
                 ],
                 [
-                    {"text":"<emoji document_id=5960608239623082921>🎲</emoji> Рандом" if self.host_color is None else "❌ Рандом", "callback":self.handle_color_choice,"args":(None,"рандом")}
+                    {"text":Рандом" if self.host_color is None else "❌ Рандом", "callback":self.handle_color_choice,"args":(None,"рандом")}
                 ],
                 [
-                    {"text":"<emoji document_id=5886455371559604605>➡️</emoji> Обратно к настройкам", "callback":self.settings_menu}
+                    {"text":Обратно к настройкам", "callback":self.settings_menu}
                 ]
             ]
         )
@@ -443,7 +443,7 @@ class Checkers(loader.Module):
                     {"text": "Нет", "callback": self.accept_game, "args":("n",)}
                 ],
                 [
-                    {"text": "<emoji document_id=5877260593903177342>⚙</emoji> Изменить настройки", "callback": self.settings_menu}
+                    {"text": Изменить настройки", "callback": self.settings_menu}
                 ]
             ], 
             disable_security = True,
