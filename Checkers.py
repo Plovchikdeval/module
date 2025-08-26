@@ -1,6 +1,6 @@
-# developer: @Androfon_AI
-# name: Шашки
-# version: 1.0.4
+# meta developer: @Androfon_AI
+# meta name: Шашки
+# meta version: 1.0.4
 
 import asyncio, html, random
 from .. import loader, utils
