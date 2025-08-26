@@ -1,6 +1,6 @@
 # meta developer: @Androfon_AI
 # meta name: Шашки
-# meta version: 1.0.5
+# meta version: 1.0.6
 #
 
 import asyncio, html, random
@@ -13,12 +13,12 @@ WHITE_KING = 3
 BLACK_KING = 4
 
 PIECE_EMOJIS = {
-    EMPTY: "▪️",
-    "light": "▫️",
+    EMPTY: ".",
+    "light": " ",
     WHITE_MAN: "⚪",
     BLACK_MAN: "⚫",
-    WHITE_KING: "👑⚪",
-    BLACK_KING: "👑⚫",
+    WHITE_KING: "⚾",
+    BLACK_KING: "🌚",
     'selected': "🔘",
     'move_target': "🟢",
     'capture_target': "🔴",
