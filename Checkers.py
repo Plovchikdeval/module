@@ -12,8 +12,8 @@ WHITE_KING = 3
 BLACK_KING = 4
 
 PIECE_EMOJIS = {
-    EMPTY: " ",
-    "light": ".",
+    EMPTY: ".",
+    "light": " ",
     WHITE_MAN: "⚪",
     BLACK_MAN: "⚫",
     WHITE_KING: "🌝",
