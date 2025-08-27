@@ -1,6 +1,6 @@
 # meta developer: @Androfon_AI
-# meta name: Checkers
-# meta version: 1.0.7.2
+# meta name: Шашки
+# meta version: 1.0.5
 
 import asyncio, html, random
 from .. import loader, utils
@@ -12,24 +12,23 @@ WHITE_KING = 3
 BLACK_KING = 4
 
 PIECE_EMOJIS = {
-    EMPTY: " ", # Темная пустая клетка
-    "light": ".", # Светлая пустая клетка
+    EMPTY: " ",
+    "light": ".",
     WHITE_MAN: "⚪",
     BLACK_MAN: "⚫",
-    WHITE_KING: "🌚", # 
-    BLACK_KING: "🌝",
+    WHITE_KING: "🌝",
+    BLACK_KING: "🌚",
     'selected': "🔘",
     'move_target': "🟢",
     'capture_target': "🔴",
 }
 
 class CheckersBoard:
-    def __init__(self, mandatory_capture_enabled=True):
+    def __init__(self):
         self._board = [[EMPTY for _ in range(8)] for _ in range(8)]
         self._setup_initial_pieces()
         self.current_player = "white"
-        self.mandatory_capture_from_pos = None # (r, c) если игрок обязан продолжить захват с этой позиции
-        self.mandatory_capture_enabled = mandatory_capture_enabled # Настройка, включен ли обязательный захват
+        self.mandatory_capture_from_pos = None
 
     def _setup_initial_pieces(self):
         for r in range(8):
@@ -63,10 +62,6 @@ class CheckersBoard:
         return "black" if color == "white" else "white"
 
     def _get_moves_for_piece(self, r, c):
-        """
-        Возвращает список возможных ходов для фигуры в (r, c).
-        Каждый ход - это кортеж: (start_r, start_c, end_r, end_c, is_capture_move).
-        """
         moves = []
         piece = self.get_piece_at(r, c)
         player_color = self._get_player_color(piece)
@@ -80,17 +75,17 @@ class CheckersBoard:
         if piece in [WHITE_MAN, BLACK_MAN]:
             regular_move_directions = []
             if piece == WHITE_MAN:
-                regular_move_directions = [(-1, -1), (-1, 1)] # Белые ходят вверх
+                regular_move_directions = [(-1, -1), (-1, 1)]
             elif piece == BLACK_MAN:
-                regular_move_directions = [(1, -1), (1, 1)] # Черные ходят вниз
+                regular_move_directions = [(1, -1), (1, 1)]
 
-            # Обычные ходы для шашек (на одну клетку вперед по диагонали на пустую клетку)
+            # Обычные ходы для шашек
             for dr, dc in regular_move_directions:
                 new_r, new_c = r + dr, c + dc
                 if self._is_valid_coord(new_r, new_c) and self.get_piece_at(new_r, new_c) == EMPTY:
                     moves.append((r, c, new_r, new_c, False))
 
-            # Ходы с захватом для шашек (через одну фигуру противника на пустую клетку)
+            # Ходы с захватом для шашек
             for dr, dc in all_diagonal_directions:
                 captured_piece_r, captured_piece_c = r + dr, c + dc
                 jump_r, jump_c = r + 2 * dr, c + 2 * dc
@@ -105,15 +100,14 @@ class CheckersBoard:
 
         elif piece in [WHITE_KING, BLACK_KING]:
             for dr, dc in all_diagonal_directions:
-                # Обычные ходы для королей (скольжение по диагонали на любое количество пустых клеток)
+                # Обычные ходы для королей
                 current_r, current_c = r + dr, c + dc
                 while self._is_valid_coord(current_r, current_c) and self.get_piece_at(current_r, current_c) == EMPTY:
                     moves.append((r, c, current_r, current_c, False))
                     current_r += dr
                     current_c += dc
 
-                # Ходы с захватом для королей (захват одной фигуры противника с возможностью приземлиться
-                # на любую пустую клетку за ней по той же диагонали)
+                # Ходы с захватом для королей
                 temp_r, temp_c = r + dr, c + dc
                 found_opponent_piece = False
                 while self._is_valid_coord(temp_r, temp_c):
@@ -121,20 +115,18 @@ class CheckersBoard:
                     piece_on_path_color = self._get_player_color(piece_on_path)
 
                     if piece_on_path_color == player_color:
-                        break # Путь заблокирован своей фигурой
+                        break # Blocked by own piece
                     elif piece_on_path_color == opponent_color:
-                        if found_opponent_piece: # Уже нашли одну фигуру противника, нельзя захватить вторую за один ход
+                        if found_opponent_piece: # Already found an opponent piece, cannot capture another
                             break
-                        found_opponent_piece = True # Отмечаем, что нашли фигуру для захвата
+                        found_opponent_piece = True # Mark that we found one
                         # Теперь проверяем пустые клетки *после* этой фигуры противника для приземления
                         jump_r, jump_c = temp_r + dr, temp_c + dc
                         while self._is_valid_coord(jump_r, jump_c) and self.get_piece_at(jump_r, jump_c) == EMPTY:
                             moves.append((r, c, jump_r, jump_c, True))
                             jump_r += dr
                             jump_c += dc
-                        # После нахождения фигуры и проверки мест приземления, этот диагональный сегмент
-                        # завершен для захватов, так как захватить можно только одну фигуру.
-                        break 
+                        break # После нахождения фигуры и проверки мест приземления, этот диагональный сегмент завершен для захватов
                     elif piece_on_path == EMPTY:
                         # Продолжаем поиск фигуры противника для захвата
                         pass
@@ -145,19 +137,14 @@ class CheckersBoard:
         return moves
 
     def get_all_possible_moves(self, player_color):
-        """
-        Возвращает все возможные ходы для данного игрока, учитывая правила обязательного захвата.
-        """
         all_moves = []
         all_captures = []
 
-        # Если включен обязательный захват и есть позиция для продолжения захвата
-        if self.mandatory_capture_from_pos and self.mandatory_capture_enabled:
+        if self.mandatory_capture_from_pos:
             r, c = self.mandatory_capture_from_pos
-            # Возвращаем только захваты, возможные из этой конкретной позиции
+            # Если есть обязательный захват из конкретной позиции, возвращаем только захваты из этой позиции
             return [m for m in self._get_moves_for_piece(r, c) if m[4]]
             
-        # Иначе ищем все возможные ходы
         for r in range(8):
             for c in range(8):
                 piece = self.get_piece_at(r, c)
@@ -169,36 +156,34 @@ class CheckersBoard:
                         else:
                             all_moves.append(move)
         
-        # Логика для обязательного захвата: если есть хоть один возможный захват
-        # и опция включена, то игрок обязан сделать захват.
-        if all_captures and self.mandatory_capture_enabled:
+        if all_captures: # Если есть хоть один возможный захват, они обязательны
             return all_captures
-        
-        # Иначе возвращаем все возможные ходы (обычные и, если обязательный захват выключен, захваты)
-        return all_moves
+        return all_moves # Иначе возвращаем обычные ходы
 
     def _execute_move(self, start_r, start_c, end_r, end_c, is_capture_move):
-        """Перемещает фигуру и удаляет захваченную, если это был захват."""
         piece = self.get_piece_at(start_r, start_c)
         self._set_piece_at(end_r, end_c, piece)
         self._set_piece_at(start_r, start_c, EMPTY)
 
         if is_capture_move:
-            # Вычисляем направление хода для удаления захваченной фигуры
+            # Вычисляем направление хода
+            dr_diff = end_r - start_r
+            dc_diff = end_c - start_c
+            
+            # Нормализуем направление для получения единичных шагов
             dr_norm = 0
-            if end_r != start_r:
-                dr_norm = (end_r - start_r) // abs(end_r - start_r)
+            if dr_diff != 0:
+                dr_norm = dr_diff // abs(dr_diff)
             
             dc_norm = 0
-            if end_c != start_c:
-                dc_norm = (end_c - start_c) // abs(end_c - start_c)
+            if dc_diff != 0:
+                dc_norm = dc_diff // abs(dc_diff)
 
-            # Итерируем по пути, чтобы найти и удалить захваченную фигуру.
-            # Начинаем поиск от клетки, следующей за стартовой позицией.
+            # Итерируем по пути, чтобы найти и удалить захваченную фигуру
             current_r, current_c = start_r + dr_norm, start_c + dc_norm
             while self._is_valid_coord(current_r, current_c) and (current_r, current_c) != (end_r, end_c):
                 if self.get_piece_at(current_r, current_c) != EMPTY:
-                    # Найдена захваченная фигура (должна быть фигурой противника по логике _get_moves_for_piece)
+                    # Найдена захваченная фигура
                     self._set_piece_at(current_r, current_c, EMPTY)
                     break # За один прыжок захватывается только одна фигура
                 current_r += dr_norm
@@ -207,36 +192,27 @@ class CheckersBoard:
         return is_capture_move
 
     def make_move(self, start_r, start_c, end_r, end_c, is_capture_move):
-        """
-        Выполняет ход, проверяет превращение в дамки и логику продолжения захвата.
-        Возвращает True, если был захват и можно сделать еще один, иначе False.
-        """
         piece = self.get_piece_at(start_r, start_c)
         
         self._execute_move(start_r, start_c, end_r, end_c, is_capture_move)
         
         # Превращение в дамки
-        if piece == WHITE_MAN and end_r == 0: # Белая шашка дошла до последней горизонтали
+        if piece == WHITE_MAN and end_r == 0:
             self._set_piece_at(end_r, end_c, WHITE_KING)
-        elif piece == BLACK_MAN and end_r == 7: # Черная шашка дошла до последней горизонтали
+        elif piece == BLACK_MAN and end_r == 7:
             self._set_piece_at(end_r, end_c, BLACK_KING)
         
         if is_capture_move:
-            if self.mandatory_capture_enabled:
-                # Проверяем, возможны ли дальнейшие захваты с новой позиции
-                further_captures = [m for m in self._get_moves_for_piece(end_r, end_c) if m[4]]
-                if further_captures:
-                    self.mandatory_capture_from_pos = (end_r, end_c)
-                    return True # Возвращаем True, если возможны дальнейшие захваты (ход не переходит)
-                else:
-                    self.mandatory_capture_from_pos = None
-                    self.switch_turn()
-                    return False # Захваты закончились, ход переходит
-            else: # Если обязательный захват выключен, ход всегда переходит после любого хода (даже захвата)
+            # Проверяем, возможны ли дальнейшие захваты с новой позиции
+            further_captures = [m for m in self._get_moves_for_piece(end_r, end_c) if m[4]]
+            if further_captures:
+                self.mandatory_capture_from_pos = (end_r, end_c)
+                return True # Возвращаем True, если возможны дальнейшие захваты
+            else:
                 self.mandatory_capture_from_pos = None
                 self.switch_turn()
-                return False
-        else: # Обычный ход
+                return False # Захваты закончились, ход переходит
+        else:
             self.mandatory_capture_from_pos = None
             self.switch_turn()
             return False # Обычный ход, ход переходит
@@ -245,14 +221,13 @@ class CheckersBoard:
         self.current_player = self._get_opponent_color(self.current_player)
 
     def is_game_over(self):
-        """Проверяет условия окончания игры: нет фигур или нет ходов."""
         white_pieces = sum(1 for r in range(8) for c in range(8) if self._get_player_color(self.get_piece_at(r, c)) == "white")
         black_pieces = sum(1 for r in range(8) for c in range(8) if self._get_player_color(self.get_piece_at(r, c)) == "black")
 
         if white_pieces == 0:
-            return "Победа черных (все белые фигуры захвачены)"
+            return "Победа черных"
         if black_pieces == 0:
-            return "Победа белых (все черные фигуры захвачены)"
+            return "Победа белых"
         
         # Проверяем, есть ли у игроков доступные ходы
         if not self.get_all_possible_moves("white"):
@@ -260,25 +235,21 @@ class CheckersBoard:
         if not self.get_all_possible_moves("black"):
             return "Победа белых (нет ходов у черных)"
 
-        return None # Игра не окончена
+        return None
 
     def to_list_of_emojis(self, selected_pos=None, possible_moves_with_info=None):
-        """
-        Преобразует текущее состояние доски в список эмодзи для отображения.
-        Подсвечивает выбранную фигуру и возможные ходы.
-        `possible_moves_with_info` - список кортежей (end_r, end_c, is_capture_move).
-        """
         board_emojis = []
         possible_moves_with_info = possible_moves_with_info if possible_moves_with_info else []
         
-        # Создаем карту целевых клеток для быстрых проверок: {(end_r, end_c): is_capture_move}
+        # Создаем карту целевых клеток для быстрых проверок
+        # move_info is (end_r, end_c, is_capture)
         possible_move_targets_map = {(move_info[0], move_info[1]): move_info[2] for move_info in possible_moves_with_info}
 
         for r in range(8):
             row_emojis = []
             for c in range(8):
                 piece = self.get_piece_at(r, c)
-                emoji = PIECE_EMOJIS[piece] # Эмодзи фигуры или темной пустой клетки
+                emoji = PIECE_EMOJIS[piece]
 
                 if (r, c) == selected_pos:
                     emoji = PIECE_EMOJIS['selected']
@@ -286,70 +257,63 @@ class CheckersBoard:
                     is_capture_move = possible_move_targets_map[(r, c)]
                     emoji = PIECE_EMOJIS['capture_target'] if is_capture_move else PIECE_EMOJIS['move_target']
                 elif (r + c) % 2 == 0: # Светлые клетки
-                    emoji = PIECE_EMOJIS['light'] # Если это светлая клетка и не выбрана/не цель
+                    emoji = PIECE_EMOJIS['light']
                 
                 row_emojis.append(emoji)
             board_emojis.append(row_emojis)
         return board_emojis
     
     def get_valid_moves_for_selection(self, current_r, current_c):
-        """
-        Возвращает допустимые целевые клетки для выбранной фигуры (current_r, current_c),
-        учитывая правила игры (например, обязательный захват).
-        Возвращает список кортежей (end_r, end_c, is_capture_move).
-        """
         piece_moves_full_info = self._get_moves_for_piece(current_r, current_c)
         
         all_game_moves_full_info = self.get_all_possible_moves(self.current_player)
-        all_game_captures_full_info = [m for m in all_game_moves_full_info if m[4]] # Отфильтровываем только захваты
-
-        # Если включен обязательный захват и есть хотя бы один захват
-        if self.mandatory_capture_enabled and all_game_captures_full_info:
-            if self.mandatory_capture_from_pos: # Если есть конкретная позиция, с которой нужно продолжить захват
+        all_game_captures_full_info = [m for m in all_game_moves_full_info if m[4]]
+        
+        if all_game_captures_full_info:
+            if self.mandatory_capture_from_pos:
                 if (current_r, current_c) == self.mandatory_capture_from_pos:
-                    # Разрешены только захваты из этой обязательной позиции
+                    # Только захваты из обязательной позиции
                     return [(e_r, e_c, is_cap) for s_r, s_c, e_r, e_c, is_cap in piece_moves_full_info if is_cap]
                 else:
-                    # Если обязательный захват установлен, но не с этой фигуры, то ходов для этой фигуры нет
+                    # Если обязательный захват установлен, но не с этой фигуры, то ходов нет
                     return []
-            else: # Если обязательный захват есть, но не привязан к конкретной фигуре (начало цепочки или первый захват)
-                # Возвращаем только захваты для этой фигуры, которые являются частью всех возможных захватов игрока
-                # Здесь (s_r,s_c,e_r,e_c,is_cap) - полный кортеж хода
+            else:
+                # Если в целом есть захваты, возвращаем только захваты для этой фигуры,
+                # которые также являются частью обязательных захватов для всего игрока.
                 return [(e_r, e_c, is_cap) for s_r, s_c, e_r, e_c, is_cap in piece_moves_full_info if is_cap and (s_r,s_c,e_r,e_c,is_cap) in all_game_captures_full_info]
-        else: # Если обязательный захват выключен или нет доступных захватов
-            # Возвращаем все ходы для этой фигуры, которые также являются частью всех возможных ходов для всего игрока.
-            return [(e_r, e_c, is_cap) for s_r, s_c, e_r, e_c, is_cap in piece_moves_full_info if (s_r,s_c,e_r,e_c,is_cap) in all_game_moves_full_info]
+        else:
+            # Захватов нет, возвращаем обычные ходы для этой фигуры,
+            # которые также являются частью всех возможных обычных ходов для всего игрока.
+            # (all_game_moves_full_info в этом случае содержит только обычные ходы)
+            return [(e_r, e_c, is_cap) for s_r, s_c, e_r, e_c, is_cap in piece_moves_full_info if not is_cap and (s_r,s_c,e_r,e_c,is_cap) in all_game_moves_full_info]
 
 
 @loader.tds
 class Checkers(loader.Module):
     """Шашки для игры вдвоём."""
     strings = {
-        "name": "Checkers"
+        "name": "Шашки"
     }
 
     async def client_ready(self):
-        self._board_obj = None # Объект доски CheckersBoard
-        self._game_message = None # Исходное сообщение с командой .checkers
-        self._game_chat_id = None # ID чата, где идет игра
-        self._selected_piece_pos = None # (r, c) выбранной фигуры
-        self._possible_moves_for_selected = [] # Список (end_r, end_c, is_capture_move) для выбранной фигуры
+        self._board_obj = None
+        self._game_message = None
+        self._game_chat_id = None
+        self._selected_piece_pos = None
+        self._possible_moves_for_selected = []
         self.saymyname = html.escape((await self.client.get_me()).first_name)
-        self.owner_id = (await self.client.get_me()).id # Сохраняем ID владельца юзербота для настроек
-        self.colorName = "рандом" # Отображаемое название цвета хоста
-        self.host_color = None # Фактический цвет хоста ("white", "black" или None для рандома)
-        self.game_running = False # Флаг активной игры
-        self.game_reason_ended = None # Причина завершения игры
-        self.players_ids = [] # Список ID обоих игроков
-        self.opponent_id = None # ID оппонента
-        self.opponent_name = None # Имя оппонента
-        self.player_white_id = None # ID игрока, играющего белыми
-        self.player_black_id = None # ID игрока, играющего черными
-        self._game_board_call = None # Объект call, используемый для редактирования сообщения с доской
-        self.mandatory_capture_enabled = True # По умолчанию обязательный захват включен
+        self.colorName = "рандом"
+        self.host_color = None
+        self.game_running = False
+        self.game_reason_ended = None
+        self.players_ids = []
+        self.opponent_id = None
+        self.opponent_name = None
+        self.player_white_id = None
+        self.player_black_id = None
+        self._game_board_call = None
 
     async def purgeSelf(self):
-        """Сбрасывает все переменные состояния игры."""
         self._board_obj = None
         self._game_message = None
         self._game_chat_id = None
@@ -365,26 +329,18 @@ class Checkers(loader.Module):
         self.player_white_id = None
         self.player_black_id = None
         self._game_board_call = None
-        self.mandatory_capture_enabled = True # Сброс до значения по умолчанию
-        # self.owner_id не сбрасываем, он остается постоянным
 
     async def settings_menu(self, call):
-        """Меню настроек игры."""
-        # Только владелец юзербота может менять настройки
-        if call.from_user.id != self.owner_id:
-            await call.answer("Только владелец юзербота может менять настройки этой партии!")
+        # Проверка, что только игроки могут менять настройки
+        if call.from_user.id not in self.players_ids:
+            await call.answer("Настройки не для вас!")
             return  
-        
         await call.edit(
             text=f"Настройки этой партии\n"
-                 f"| - > Хост играет за {self.colorName} цвет\n"
-                 f"| - > Обязательный захват: {'Включен' if self.mandatory_capture_enabled else 'Выключен'}",
+                 f"| - > Хост играет за {self.colorName} цвет",
             reply_markup=[
                 [
                     {"text":f"Цвет (хоста): {self.colorName}","callback":self.set_color}
-                ],
-                [
-                    {"text":f"Обязательный захват: {'Включен' if self.mandatory_capture_enabled else 'Выключен'}","callback":self.toggle_mandatory_capture}
                 ],
                 [
                     {"text":"Вернуться","callback":self.back_to_invite}
@@ -392,27 +348,15 @@ class Checkers(loader.Module):
             ]
         )
 
-    async def toggle_mandatory_capture(self, call):
-        """Переключает состояние обязательного захвата."""
-        if call.from_user.id != self.owner_id:
-            await call.answer("Только владелец юзербота может менять настройки!")
-            return
-        self.mandatory_capture_enabled = not self.mandatory_capture_enabled
-        await call.answer(f"Обязательный захват теперь {'Включен' if self.mandatory_capture_enabled else 'Выключен'}")
-        await self.settings_menu(call) # Обновляем меню настроек
-
     async def back_to_invite(self, call):
-        """Возвращает к приглашению после настроек."""
-        # Только владелец юзербота может взаимодействовать с этим меню настроек
-        if call.from_user.id != self.owner_id:
+        # Проверка, что только игроки могут взаимодействовать
+        if call.from_user.id not in self.players_ids:
             await call.answer("Это не для вас!")
             return
-        
         await call.edit(
             text=f"<a href='tg://user?id={self.opponent_id}'>{self.opponent_name}</a>, вас пригласили сыграть партию в шашки, примите?\n-- --\n"
                  f"Текущие настройки:\n"
-                 f"| - > • Хост играет за {self.colorName} цвет\n"
-                 f"| - > • Обязательный захват: {'Включен' if self.mandatory_capture_enabled else 'Выключен'}",
+                 f"| - > • Хост играет за {self.colorName} цвет",
             reply_markup = [
                 [
                     {"text": "Принимаю", "callback": self.accept_game, "args":("y",)},
@@ -425,12 +369,10 @@ class Checkers(loader.Module):
         )
 
     async def set_color(self, call):
-        """Меню выбора цвета для хоста."""
-        # Только владелец юзербота может менять настройки
-        if call.from_user.id != self.owner_id:
-            await call.answer("Только владелец юзербота может менять настройки!")
+        # Проверка, что только игроки могут менять настройки
+        if call.from_user.id not in self.players_ids:
+            await call.answer("Настройки не для вас!")
             return
-        
         await call.edit(
             text=f"• Настройки этой партии.\n"
                  f"| - > Хост играет за: {self.colorName} цвет.\nВыберите цвет его фигур",
@@ -449,15 +391,13 @@ class Checkers(loader.Module):
         )
 
     async def handle_color_choice(self, call, color, txt):
-        """Обрабатывает выбор цвета хостом."""
-        # Только владелец юзербота может менять настройки
-        if call.from_user.id != self.owner_id:
-            await call.answer("Только владелец юзербота может менять настройки!")
+        # Проверка, что только игроки могут менять настройки
+        if call.from_user.id not in self.players_ids:
+            await call.answer("Настройки не для вас!")
             return
-        
         self.colorName = txt
         self.host_color = color
-        await self.set_color(call) # Обновляем меню выбора цвета
+        await self.set_color(call)
 
     @loader.command() 
     async def checkers(self, message):
@@ -465,8 +405,7 @@ class Checkers(loader.Module):
         if self._board_obj:
             await message.edit("Партия уже где-то запущена. Завершите или сбросьте её с <code>.stopgame</code>")
             return
-        
-        await self.purgeSelf() # Очищаем предыдущее состояние игры
+        await self.purgeSelf()
         self._game_message = message
         self._game_chat_id = message.chat_id
 
@@ -504,8 +443,7 @@ class Checkers(loader.Module):
             message = message,
             text = f"<a href='tg://user?id={self.opponent_id}'>{self.opponent_name}</a>, вас пригласили сыграть партию в шашки, примите?\n-- --\n"
                    f"Текущие настройки:\n"
-                   f"| - > • Хост играет за {self.colorName} цвет\n"
-                   f"| - > • Обязательный захват: {'Включен' if self.mandatory_capture_enabled else 'Выключен'}",
+                   f"| - > • Хост играет за {self.colorName} цвет",
             reply_markup = [
                 [
                     {"text": "Принимаю", "callback": self.accept_game, "args":("y",)},
@@ -515,275 +453,26 @@ class Checkers(loader.Module):
                     {"text": "Изменить настройки", "callback": self.settings_menu}
                 ]
             ], 
-            disable_security = True, # Разрешить всем взаимодействовать с кнопками приглашения
-            on_unload=self.outdated_game # Функция, вызываемая при "устаревании" формы
+            disable_security = True,
+            on_unload=self.outdated_game
         )
 
     @loader.command() 
     async def stopgame(self, message):
-        """Досрочное завершение партии"""
-        # Проверяем, что игру может остановить только один из игроков, если игра активна.
-        # Если игра неактивна (_board_obj is None), любой может "остановить" ее, чтобы очистить потенциально зависшее состояние.
-        if self._board_obj and message.from_user.id not in self.players_ids:
+        "
+"Досрочное завершение партии"""
+        # Проверяем, что игру может остановить только один из игроков
+        if self._game_board_call and message.from_user.id not in self.players_ids:
             await message.edit("Вы не игрок этой партии.")
             return
 
-        # Если игра была активна и сообщение с доской существовало, пытаемся обновить его
+        await self.purgeSelf()
+        await message.edit("Данные очищены")
+        # Если игра была активна и сообщение с доской существовало, возможно, стоит обновить его
         if self._game_board_call:
             try:
                 await self._game_board_call.edit(text="Партия была остановлена.")
             except Exception:
                 pass # Сообщение могло быть удалено или недоступно
-        
-        await self.purgeSelf()
-        await message.edit("Данные игры очищены.")
 
-    async def accept_game(self, call, data):
-        """Обрабатывает принятие/отклонение приглашения в игру."""
-        # Проверка, что хост не может принять свою же игру, и что только приглашенные игроки могут взаимодействовать
-        if call.from_user.id == self._game_message.sender_id:
-            await call.answer("Дай человеку ответить!")
-            return
-        if call.from_user.id not in self.players_ids:
-            await call.answer("Не тебе предлагают игру!")
-            return
-        
-        if data == 'y':
-            # Передаем настройку обязательного захвата в объект доски
-            self._board_obj = CheckersBoard(mandatory_capture_enabled=self.mandatory_capture_enabled) 
-            if not self.host_color: # Если цвет не был выбран, выбираем рандомно
-                await call.edit(text="Выбираю стороны...")
-                await asyncio.sleep(0.5)
-                self.host_color = self.ranColor()
-            
-            # Назначаем ID игроков белым и черным
-            if self.host_color == "white":
-                self.player_white_id = self._game_message.sender_id
-                self.player_black_id = self.opponent_id
-            else:
-                self.player_white_id = self.opponent_id
-                self.player_black_id = self._game_message.sender_id
-
-            text = await self.get_game_status_text()
-            await call.edit(text="Загрузка доски...")
-            await asyncio.sleep(0.5)
-            
-            self.game_running = True
-            self._game_board_call = call # Сохраняем call объект, чтобы можно было редактировать доску
-            
-            await call.edit(text="Для лучшего различия фигур включите светлую тему!")
-            await asyncio.sleep(2.5) # Даем время прочитать сообщение
-            await self.render_board(text, call) # Отображаем доску
-        else:
-            await call.edit(text="Приглашение отклонено.")
-            await self.purgeSelf()
-
-    async def render_board(self, text, call):
-        """Отображает доску шашек с кнопками."""
-        board_emojis = self._board_obj.to_list_of_emojis(self._selected_piece_pos, self._possible_moves_for_selected)
-        
-        btns = []
-        for r in range(8):
-            row_btns = []
-            for c in range(8):
-                row_btns.append({"text": board_emojis[r][c], "callback": self.handle_click, "args":(r, c,)})
-            btns.append(row_btns)
-
-        # Добавляем кнопку "Остановить игру"
-        btns.append([{"text": "Остановить игру", "callback": self.stop_game_inline}])
-
-        await call.edit(
-            text = text,
-            reply_markup = btns,
-            disable_security = True # Разрешить всем взаимодействовать (проверки внутри handle_click)
-        )
     
-    async def stop_game_inline(self, call):
-        """Обрабатывает нажатие кнопки "Остановить игру" на доске."""
-        # Проверяем, что игру может остановить только один из игроков
-        if call.from_user.id not in self.players_ids:
-            await call.answer("Вы не игрок этой партии.")
-            return
-        
-        await self.purgeSelf()
-        await call.edit("Партия была остановлена игроком.")
-        
-    async def handle_click(self, call, r, c):
-        """Обрабатывает нажатие на клетку доски."""
-        if not self.game_running:
-            # Если игра неактивна, но кнопки еще отображаются, очищаем состояние.
-            # Это может произойти, если игра завершилась, но пользователь еще нажимает кнопки.
-            await call.answer("Игра неактивна или уже завершена. Для новой игры используйте .checkers")
-            if self._game_board_call:
-                try:
-                    await self._game_board_call.edit(text="Партия завершена/неактивна.")
-                except Exception:
-                    pass
-            await self.purgeSelf()
-            return
-
-        game_over_status = self._board_obj.is_game_over()
-        if game_over_status:
-            self.game_running = False
-            self.game_reason_ended = game_over_status
-            await call.answer(f"Партия окончена: {game_over_status}. Для новой игры используйте .checkers")
-            await self.render_board(await self.get_game_status_text(), call) # Обновляем доску с финальным статусом
-            await self.purgeSelf() # Очищаем данные после окончания игры
-            return
-        
-        if call.from_user.id not in self.players_ids:
-            await call.answer("Партия не ваша!")
-            return
-        
-        current_player_id = self.player_white_id if self._board_obj.current_player == "white" else self.player_black_id
-        if call.from_user.id != current_player_id:
-            await call.answer("Сейчас ход оппонента!")
-            return
-
-        piece_at_click = self._board_obj.get_piece_at(r, c)
-        player_color_at_click = self._board_obj._get_player_color(piece_at_click)
-
-        if self._selected_piece_pos is None:
-            # Выбор фигуры
-            if player_color_at_click == self._board_obj.current_player:
-                # Проверяем обязательный захват только если он включен
-                if self._board_obj.mandatory_capture_enabled and self._board_obj.mandatory_capture_from_pos and self._board_obj.mandatory_capture_from_pos != (r, c):
-                    await call.answer("Вы должны продолжить захват с предыдущей позиции!")
-                    return
-
-                possible_moves_with_info = self._board_obj.get_valid_moves_for_selection(r, c)
-                
-                if possible_moves_with_info:
-                    self._selected_piece_pos = (r, c)
-                    self._possible_moves_for_selected = possible_moves_with_info # Исправление: прямое присваивание
-                    await call.answer("Шашка выбрана. Выберите куда ходить.")
-                    await self.render_board(await self.get_game_status_text(), call)
-                else:
-                    await call.answer("Для этой шашки нет доступных ходов (включая обязательные захваты)!")
-            else:
-                await call.answer("Тут нет вашей шашки или это светлая клетка!")
-        else:
-            # Попытка хода или отмена выбора
-            start_r, start_c = self._selected_piece_pos
-            
-            if (r, c) == (start_r, start_c):
-                # Отмена выбора текущей фигуры
-                self._selected_piece_pos = None
-                self._possible_moves_for_selected = []
-                await call.answer("Выбор отменен.")
-                await self.render_board(await self.get_game_status_text(), call)
-                return
-
-            # Ищем, является ли выбранная клетка допустимой целью для хода
-            target_move_info = None
-            for move_info in self._possible_moves_for_selected: # move_info: (end_r, end_c, is_capture)
-                if (move_info[0], move_info[1]) == (r, c):
-                    target_move_info = move_info
-                    break
-
-            if target_move_info:
-                end_r, end_c, is_capture_move = target_move_info
-                made_capture_and_can_jump_again = self._board_obj.make_move(start_r, start_c, end_r, end_c, is_capture_move)
-                
-                # Логика продолжения захвата применяется только если mandatory_capture_enabled
-                if made_capture_and_can_jump_again and self._board_obj.mandatory_capture_enabled:
-                    # Если был захват и можно сделать еще один, фигура остается выбранной
-                    self._selected_piece_pos = (end_r, end_c)
-                    # Обновляем возможные ходы для новой позиции (продолжение захвата)
-                    self._possible_moves_for_selected = self._board_obj.get_valid_moves_for_selection(end_r, end_c) # Исправление: прямое присваивание
-                    await call.answer("Захват! Сделайте следующий захват.")
-                else:
-                    # Ход завершен, сбрасываем выбор
-                    self._selected_piece_pos = None
-                    self._possible_moves_for_selected = []
-                    await call.answer("Ход сделан.")
-                
-                game_over_status = self._board_obj.is_game_over()
-                if game_over_status:
-                    self.game_running = False
-                    self.game_reason_ended = game_over_status
-                    await call.answer(f"Партия окончена: {game_over_status}")
-                    await self.render_board(await self.get_game_status_text(), call) # Обновляем доску с финальным статусом
-                    await self.purgeSelf() # Очищаем данные после окончания игры
-                    return
-                
-                await self.render_board(await self.get_game_status_text(), call)
-            else:
-                # Если выбранная клетка не является целью для хода, возможно, игрок хочет выбрать другую свою шашку
-                if player_color_at_click == self._board_obj.current_player:
-                    # Проверяем обязательный захват только если он включен
-                    if self._board_obj.mandatory_capture_enabled and self._board_obj.mandatory_capture_from_pos and self._board_obj.mandatory_capture_from_pos != (r, c):
-                        await call.answer("Вы должны продолжить захват с предыдущей позиции!")
-                        return
-                    
-                    possible_moves_with_info = self._board_obj.get_valid_moves_for_selection(r, c)
-                    
-                    if possible_moves_with_info:
-                        self._selected_piece_pos = (r, c)
-                        self._possible_moves_for_selected = possible_moves_with_info # Исправление: прямое присваивание
-                        await call.answer("Выбрана другая шашка.")
-                        await self.render_board(await self.get_game_status_text(), call)
-                    else:
-                        await call.answer("Для этой шашки нет доступных ходов (включая обязательные захваты)!")
-                else:
-                    await call.answer("Неверный ход или цель не является вашей шашкой!")
-
-    async def get_game_status_text(self):
-        """Формирует текстовый статус игры (чей ход, кто играет, статус завершения)."""
-        game_over_status = self._board_obj.is_game_over()
-        if game_over_status:
-            self.game_running = False
-            self.game_reason_ended = game_over_status
-            
-            # Определяем имя победителя для отображения
-            winner_name = ""
-            if "Победа белых" in game_over_status:
-                if self.player_white_id:
-                    winner_name = html.escape((await self.client.get_entity(self.player_white_id)).first_name)
-                    return f"Партия окончена: {game_over_status}\n\nПобедил(а) {winner_name} (белые)!"
-            elif "Победа черных" in game_over_status:
-                if self.player_black_id:
-                    winner_name = html.escape((await self.client.get_entity(self.player_black_id)).first_name)
-                    return f"Партия окончена: {game_over_status}\n\nПобедил(а) {winner_name} (черные)!"
-            return f"Партия окончена: {game_over_status}"
-
-        # Получаем актуальные имена игроков для отображения
-        white_player_entity = await self.client.get_entity(self.player_white_id)
-        black_player_entity = await self.client.get_entity(self.player_black_id)
-        
-        white_player_name = html.escape(white_player_entity.first_name)
-        black_player_name = html.escape(black_player_entity.first_name)
-
-        current_player_id = self.player_white_id if self._board_obj.current_player == "white" else self.player_black_id
-        current_player_name = html.escape((await self.client.get_entity(current_player_id)).first_name)
-        
-        status_text = f"⚪ Белые - {white_player_name}\n⚫ Чёрные - {black_player_name}\n\n"
-        
-        if self._board_obj.current_player == "white":
-            status_text += f"Ход белых ({current_player_name})"
-        else:
-            status_text += f"Ход чёрных ({current_player_name})"
-        
-        if self._board_obj.mandatory_capture_from_pos and self._board_obj.mandatory_capture_enabled:
-            status_text += "\nОбязательный захват!"
-        elif not self._board_obj.mandatory_capture_enabled:
-            status_text += "\n(Обязательный захват выключен)"
-
-        return status_text
-
-    async def outdated_game(self):
-        """
-        Эта функция вызывается, когда инлайн-форма становится устаревшей (например, по таймауту).
-        Если игра все еще активна, очищаем ее состояние.
-        """
-        if self.game_running or self._board_obj:
-            if self._game_board_call:
-                try:
-                    await self._game_board_call.edit(text="Партия устарела из-за отсутствия активности.")
-                except Exception:
-                    pass # Сообщение могло быть удалено или недоступно
-            await self.purgeSelf()
-
-    def ranColor(self):
-        """Возвращает случайный цвет: "white" или "black"."""
-        return "white" if random.randint(1,2) == 1 else "black"
