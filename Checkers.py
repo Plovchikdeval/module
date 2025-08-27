@@ -1,7 +1,6 @@
 # meta developer: @Androfon_AI
 # meta name: Checkers
-# meta version: 1.0.7.1
-#
+# meta version: 1.0.7.2
 
 import asyncio, html, random
 from .. import loader, utils
@@ -13,11 +12,11 @@ WHITE_KING = 3
 BLACK_KING = 4
 
 PIECE_EMOJIS = {
-    EMPTY: ".", # Темная пустая клетка
-    "light": " ", # Светлая пустая клетка
+    EMPTY: "", # Темная пустая клетка
+    "light": ".", # Светлая пустая клетка
     WHITE_MAN: "⚪",
     BLACK_MAN: "⚫",
-    WHITE_KING: "🌚",
+    WHITE_KING: "🌚", # 
     BLACK_KING: "🌝",
     'selected': "🔘",
     'move_target': "🟢",
@@ -267,6 +266,7 @@ class CheckersBoard:
         """
         Преобразует текущее состояние доски в список эмодзи для отображения.
         Подсвечивает выбранную фигуру и возможные ходы.
+        `possible_moves_with_info` - список кортежей (end_r, end_c, is_capture_move).
         """
         board_emojis = []
         possible_moves_with_info = possible_moves_with_info if possible_moves_with_info else []
@@ -314,6 +314,7 @@ class CheckersBoard:
                     return []
             else: # Если обязательный захват есть, но не привязан к конкретной фигуре (начало цепочки или первый захват)
                 # Возвращаем только захваты для этой фигуры, которые являются частью всех возможных захватов игрока
+                # Здесь (s_r,s_c,e_r,e_c,is_cap) - полный кортеж хода
                 return [(e_r, e_c, is_cap) for s_r, s_c, e_r, e_c, is_cap in piece_moves_full_info if is_cap and (s_r,s_c,e_r,e_c,is_cap) in all_game_captures_full_info]
         else: # Если обязательный захват выключен или нет доступных захватов
             # Возвращаем все ходы для этой фигуры, которые также являются частью всех возможных ходов для всего игрока.
@@ -324,7 +325,7 @@ class CheckersBoard:
 class Checkers(loader.Module):
     """Шашки для игры вдвоём."""
     strings = {
-        "name": "Шашки"
+        "name": "Checkers"
     }
 
     async def client_ready(self):
@@ -548,7 +549,8 @@ class Checkers(loader.Module):
             return
         
         if data == 'y':
-            self._board_obj = CheckersBoard(mandatory_capture_enabled=self.mandatory_capture_enabled) # Передаем настройку обязательного захвата
+            # Передаем настройку обязательного захвата в объект доски
+            self._board_obj = CheckersBoard(mandatory_capture_enabled=self.mandatory_capture_enabled) 
             if not self.host_color: # Если цвет не был выбран, выбираем рандомно
                 await call.edit(text="Выбираю стороны...")
                 await asyncio.sleep(0.5)
@@ -608,21 +610,29 @@ class Checkers(loader.Module):
         
     async def handle_click(self, call, r, c):
         """Обрабатывает нажатие на клетку доски."""
+        if not self.game_running:
+            # Если игра неактивна, но кнопки еще отображаются, очищаем состояние.
+            # Это может произойти, если игра завершилась, но пользователь еще нажимает кнопки.
+            await call.answer("Игра неактивна или уже завершена. Для новой игры используйте .checkers")
+            if self._game_board_call:
+                try:
+                    await self._game_board_call.edit(text="Партия завершена/неактивна.")
+                except Exception:
+                    pass
+            await self.purgeSelf()
+            return
+
         game_over_status = self._board_obj.is_game_over()
         if game_over_status:
+            self.game_running = False
+            self.game_reason_ended = game_over_status
             await call.answer(f"Партия окончена: {game_over_status}. Для новой игры используйте .checkers")
-            if self.game_running:
-                 self.game_running = False
-                 await self.purgeSelf() # Очищаем данные после окончания игры
+            await self.render_board(await self.get_game_status_text(), call) # Обновляем доску с финальным статусом
+            await self.purgeSelf() # Очищаем данные после окончания игры
             return
         
         if call.from_user.id not in self.players_ids:
-            await call.answer("Партия не ваша или уже сброшена!")
-            return
-        
-        if not self.game_running:
-            await call.answer("Игра еще не началась (не принята) или уже завершена.")
-            await self.purgeSelf()
+            await call.answer("Партия не ваша!")
             return
         
         current_player_id = self.player_white_id if self._board_obj.current_player == "white" else self.player_black_id
@@ -645,8 +655,7 @@ class Checkers(loader.Module):
                 
                 if possible_moves_with_info:
                     self._selected_piece_pos = (r, c)
-                    # possible_moves_for_selected содержит (end_r, end_c, is_capture_move)
-                    self._possible_moves_for_selected = [(m[2], m[3], m[4]) for m in possible_moves_with_info] 
+                    self._possible_moves_for_selected = possible_moves_with_info # Исправление: прямое присваивание
                     await call.answer("Шашка выбрана. Выберите куда ходить.")
                     await self.render_board(await self.get_game_status_text(), call)
                 else:
@@ -681,7 +690,7 @@ class Checkers(loader.Module):
                     # Если был захват и можно сделать еще один, фигура остается выбранной
                     self._selected_piece_pos = (end_r, end_c)
                     # Обновляем возможные ходы для новой позиции (продолжение захвата)
-                    self._possible_moves_for_selected = [(m[2], m[3], m[4]) for m in self._board_obj.get_valid_moves_for_selection(end_r, end_c)]
+                    self._possible_moves_for_selected = self._board_obj.get_valid_moves_for_selection(end_r, end_c) # Исправление: прямое присваивание
                     await call.answer("Захват! Сделайте следующий захват.")
                 else:
                     # Ход завершен, сбрасываем выбор
@@ -711,7 +720,7 @@ class Checkers(loader.Module):
                     
                     if possible_moves_with_info:
                         self._selected_piece_pos = (r, c)
-                        self._possible_moves_for_selected = [(m[2], m[3], m[4]) for m in possible_moves_with_info]
+                        self._possible_moves_for_selected = possible_moves_with_info # Исправление: прямое присваивание
                         await call.answer("Выбрана другая шашка.")
                         await self.render_board(await self.get_game_status_text(), call)
                     else:
@@ -768,13 +777,12 @@ class Checkers(loader.Module):
         Если игра все еще активна, очищаем ее состояние.
         """
         if self.game_running or self._board_obj:
-            await self.purgeSelf()
-            # Если _game_board_call существует, пытаемся обновить сообщение, чтобы показать, что игра устарела
             if self._game_board_call:
                 try:
                     await self._game_board_call.edit(text="Партия устарела из-за отсутствия активности.")
                 except Exception:
                     pass # Сообщение могло быть удалено или недоступно
+            await self.purgeSelf()
 
     def ranColor(self):
         """Возвращает случайный цвет: "white" или "black"."""
