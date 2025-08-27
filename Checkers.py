@@ -1,7 +1,7 @@
 # meta developer: @Androfon_AI
 # meta name: Checkers
-# meta version: 1.0.7
-# А вы знали что лощадь может дожить до конца своей жизни?
+# meta version: 1.0.7.1
+#
 
 import asyncio, html, random
 from .. import loader, utils
