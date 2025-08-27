@@ -12,7 +12,7 @@ WHITE_KING = 3
 BLACK_KING = 4
 
 PIECE_EMOJIS = {
-    EMPTY: "", # Темная пустая клетка
+    EMPTY: " ", # Темная пустая клетка
     "light": ".", # Светлая пустая клетка
     WHITE_MAN: "⚪",
     BLACK_MAN: "⚫",
