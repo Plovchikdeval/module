@@ -479,4 +479,225 @@ class Checkers(loader.Module):
         if call.from_user.id == self._game_message.sender_id:
             await call.answer("Дай человеку ответить!")
             return
+        if call.from_user.id not in self.players_ids:
+            await call.answer("Не тебе предлагают игру!")
+            return
+        
+        if data == 'y':
+            self._board_obj = CheckersBoard()
+            if not self.host_color:
+                await call.edit(text="Выбираю стороны...")
+                await asyncio.sleep(0.5)
+                self.host_color = self.ranColor()
+            
+            if self.host_color == "white":
+                self.player_white_id = self._game_message.sender_id
+                self.player_black_id = self.opponent_id
+            else:
+                self.player_white_id = self.opponent_id
+                self.player_black_id = self._game_message.sender_id
 
+            text = await self.get_game_status_text()
+            await call.edit(text="Загрузка доски...")
+            await asyncio.sleep(0.5)
+            
+            self.game_running = True
+            self._game_board_call = call # Сохраняем call объект, чтобы можно было редактировать доску
+            
+            await call.edit(text="Для лучшего различия фигур включите светлую тему!")
+            await asyncio.sleep(2.5)
+            await self.render_board(text, call)
+        else:
+            await call.edit(text="Отклонено.")
+            await self.purgeSelf()
+
+    async def render_board(self, text, call):
+        board_emojis = self._board_obj.to_list_of_emojis(self._selected_piece_pos, self._possible_moves_for_selected)
+        
+        btns = []
+        for r in range(8):
+            row_btns = []
+            for c in range(8):
+                row_btns.append({"text": board_emojis[r][c], "callback": self.handle_click, "args":(r, c,)})
+            btns.append(row_btns)
+
+        # Добавляем кнопку "Остановить игру"
+        btns.append([{"text": "Остановить игру", "callback": self.stop_game_inline}])
+
+        await call.edit(
+            text = text,
+            reply_markup = btns,
+            disable_security = True
+        )
+    
+    async def stop_game_inline(self, call):
+        # Проверяем, что игру может остановить только один из игроков
+        if call.from_user.id not in self.players_ids:
+            await call.answer("Вы не игрок этой партии.")
+            return
+        
+        await self.purgeSelf()
+        await call.edit("Партия была остановлена игроком.")
+        
+    async def handle_click(self, call, r, c):
+        game_over_status = self._board_obj.is_game_over()
+        if game_over_status:
+            await call.answer(f"Партия окончена: {game_over_status}. Для новой игры используйте .checkers")
+            # Если игра окончена, но purgeSelf еще не был вызван (например, если call.edit в get_game_status_text не сработал), то вызываем его.
+            if self.game_running: # game_running будет False, если get_game_status_text уже обработал окончание
+                 self.game_running = False
+                 await self.purgeSelf()
+            return
+        
+        if call.from_user.id not in self.players_ids:
+            await call.answer("Партия не ваша или уже сброшена!")
+            return
+        
+        if not self.game_running:
+            await call.answer("Игра еще не началась (не принята) или уже завершена.")
+            # Если игра не запущена, очищаем состояние на всякий случай
+            await self.purgeSelf()
+            return
+        
+        current_player_id = self.player_white_id if self._board_obj.current_player == "white" else self.player_black_id
+        if call.from_user.id != current_player_id:
+            await call.answer("Сейчас ход оппонента!")
+            return
+
+        piece_at_click = self._board_obj.get_piece_at(r, c)
+        player_color_at_click = self._board_obj._get_player_color(piece_at_click)
+
+        if self._selected_piece_pos is None:
+            # Выбор фигуры
+            if player_color_at_click == self._board_obj.current_player:
+                if self._board_obj.mandatory_capture_from_pos and self._board_obj.mandatory_capture_from_pos != (r, c):
+                    await call.answer("Вы должны продолжить захват с предыдущей позиции!")
+                    return
+
+                possible_moves_with_info = self._board_obj.get_valid_moves_for_selection(r, c)
+                
+                if possible_moves_with_info:
+                    self._selected_piece_pos = (r, c)
+                    self._possible_moves_for_selected = possible_moves_with_info
+                    await call.answer("Шашка выбрана. Выберите куда ходить.")
+                    await self.render_board(await self.get_game_status_text(), call)
+                else:
+                    await call.answer("Для этой шашки нет доступных ходов (включая обязательные захваты)!")
+            else:
+                await call.answer("Тут нет вашей шашки или это светлая клетка!")
+        else:
+            # Попытка хода или отмена выбора
+            start_r, start_c = self._selected_piece_pos
+            
+            if (r, c) == (start_r, start_c):
+                # Отмена выбора текущей фигуры
+                self._selected_piece_pos = None
+                self._possible_moves_for_selected = []
+                await call.answer("Выбор отменен.")
+                await self.render_board(await self.get_game_status_text(), call)
+                return
+
+            # Ищем, является ли выбранная клетка допустимой целью для хода
+            target_move_info = None
+            for move_info in self._possible_moves_for_selected:
+                if (move_info[0], move_info[1]) == (r, c):
+                    target_move_info = move_info
+                    break
+
+            if target_move_info:
+                end_r, end_c, is_capture_move = target_move_info
+                made_capture_and_can_jump_again = self._board_obj.make_move(start_r, start_c, end_r, end_c, is_capture_move)
+                
+                if made_capture_and_can_jump_again:
+                    # Если был захват и можно сделать еще один, фигура остается выбранной
+                    self._selected_piece_pos = (end_r, end_c)
+                    self._possible_moves_for_selected = self._board_obj.get_valid_moves_for_selection(end_r, end_c)
+                    await call.answer("Захват! Сделайте следующий захват.")
+                else:
+                    # Ход завершен, сбрасываем выбор
+                    self._selected_piece_pos = None
+                    self._possible_moves_for_selected = []
+                    await call.answer("Ход сделан.")
+                
+                game_over_status = self._board_obj.is_game_over()
+                if game_over_status:
+                    self.game_running = False
+                    self.game_reason_ended = game_over_status
+                    await call.answer(f"Партия окончена: {game_over_status}")
+                    await self.render_board(await self.get_game_status_text(), call) # Обновляем доску с финальным статусом
+                    await self.purgeSelf() # Очищаем данные после окончания игры
+                    return
+                
+                await self.render_board(await self.get_game_status_text(), call)
+            else:
+                # Если выбранная клетка не является целью для хода, возможно, игрок хочет выбрать другую свою шашку
+                if player_color_at_click == self._board_obj.current_player:
+                    if self._board_obj.mandatory_capture_from_pos and self._board_obj.mandatory_capture_from_pos != (r, c):
+                        await call.answer("Вы должны продолжить захват с предыдущей позиции!")
+                        return
+                    
+                    possible_moves_with_info = self._board_obj.get_valid_moves_for_selection(r, c)
+                    
+                    if possible_moves_with_info:
+                        self._selected_piece_pos = (r, c)
+                        self._possible_moves_for_selected = possible_moves_with_info
+                        await call.answer("Выбрана другая шашка.")
+                        await self.render_board(await self.get_game_status_text(), call)
+                    else:
+                        await call.answer("Для этой шашки нет доступных ходов (включая обязательные захваты)!")
+                else:
+                    await call.answer("Неверный ход или цель не является вашей шашкой!")
+
+    async def get_game_status_text(self):
+        game_over_status = self._board_obj.is_game_over()
+        if game_over_status:
+            self.game_running = False
+            self.game_reason_ended = game_over_status
+            
+            # Determine winner's name
+            winner_name = ""
+            if "Победа белых" in game_over_status:
+                winner_name = html.escape((await self.client.get_entity(self.player_white_id)).first_name)
+                return f"Партия окончена: {game_over_status}\n\nПобедил(а) {winner_name} (белые)!"
+            elif "Победа черных" in game_over_status:
+                winner_name = html.escape((await self.client.get_entity(self.player_black_id)).first_name)
+                return f"Партия окончена: {game_over_status}\n\nПобедил(а) {winner_name} (черные)!"
+            return f"Партия окончена: {game_over_status}"
+
+        # Нужно получить актуальные имена игроков, так как self.saymyname и self.opponent_name могут быть не теми
+        # кто играет белыми/черными, если хост выбрал другой цвет.
+        white_player_entity = await self.client.get_entity(self.player_white_id)
+        black_player_entity = await self.client.get_entity(self.player_black_id)
+        
+        white_player_name = html.escape(white_player_entity.first_name)
+        black_player_name = html.escape(black_player_entity.first_name)
+
+        current_player_id = self.player_white_id if self._board_obj.current_player == "white" else self.player_black_id
+        current_player_name = html.escape((await self.client.get_entity(current_player_id)).first_name)
+        
+        status_text = f"♔ Белые - {white_player_name}\n♚ Чёрные - {black_player_name}\n\n"
+        
+        if self._board_obj.current_player == "white":
+            status_text += f"Ход белых ({current_player_name})"
+        else:
+            status_text += f"Ход чёрных ({current_player_name})"
+        
+        if self._board_obj.mandatory_capture_from_pos:
+            status_text += "\nОбязательный захват!"
+
+        return status_text
+
+    async def outdated_game(self):
+        # Эта функция вызывается, когда инлайн-форма становится устаревшей (например, по таймауту)
+        # Если игра все еще активна, очищаем ее состояние
+        if self.game_running or self._board_obj:
+            await self.purgeSelf()
+            # Если _game_board_call существует, пытаемся обновить сообщение, чтобы показать, что игра устарела
+            if self._game_board_call:
+                try:
+                    await self._game_board_call.edit(text="Партия устарела из-за отсутствия активности.")
+                except Exception:
+                    pass # Сообщение могло быть удалено или недоступно
+
+    def ranColor(self):
+        return "white" if random.randint(1,2) == 1 else "black"
