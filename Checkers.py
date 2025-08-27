@@ -459,8 +459,7 @@ class Checkers(loader.Module):
 
     @loader.command() 
     async def stopgame(self, message):
-        "
-"Досрочное завершение партии"""
+        """Досрочное завершение партии"""
         # Проверяем, что игру может остановить только один из игроков
         if self._game_board_call and message.from_user.id not in self.players_ids:
             await message.edit("Вы не игрок этой партии.")
@@ -475,4 +474,9 @@ class Checkers(loader.Module):
             except Exception:
                 pass # Сообщение могло быть удалено или недоступно
 
-    
+    async def accept_game(self, call, data):
+        # Проверка, что хост не может принять свою же игру, и что только приглашенные игроки могут взаимодействовать
+        if call.from_user.id == self._game_message.sender_id:
+            await call.answer("Дай человеку ответить!")
+            return
+
