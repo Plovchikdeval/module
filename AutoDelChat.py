@@ -1,15 +1,10 @@
-# meta developer: @Androfon_AI
-# meta name: AutoDelChat
-# meta version: 1.1
-
 from .. import loader, utils
 from telethon.tl.types import Message
 
-
 class AutoDelChat(loader.Module):
-    """
-    Автоматически удаляет исходящие сообщения после их отправки.
-    """
+    """Автоматически удаляет исходящие сообщения после их отправки."""
+    
+    strings = {"name": "AutoDelChat"}
 
     def __init__(self):
         self.config = loader.ModuleConfig(
@@ -20,27 +15,21 @@ class AutoDelChat(loader.Module):
             )
         )
 
+    async def on_load(self):
+        self.log.info(f"Модуль {self.strings['name']} v{self.__class__.__version__} загружен!")
+
     @loader.watcher(outgoing=True)
     async def watcher(self, message: Message):
-        """
-        Отслеживает исходящие сообщения и удаляет их, если модуль включен.
-        """
         if self.config["enabled"]:
             try:
-                # Удаляем исходящее сообщение
                 await message.delete()
             except Exception:
-                # Пропускаем ошибки, например, если сообщение уже удалено или нет прав.
                 pass
 
     @loader.command(
-        ru_doc=".autodelete on / off Включает или отключает автоматическое удаление исходящих сообщений"
+        ru_doc=".autodelete on/off - Включить/выключить автоудаление"
     )
     async def autodelete(self, message: Message):
-        """
-        Включает или отключает автоматическое удаление исходящих сообщений.
-        Используйте `.autodelete on`, чтобы включить, или `.autodelete off`, чтобы выключить.
-        """
         args = utils.get_args_raw(message)
         if args.lower() == "on":
             self.config["enabled"] = True
@@ -51,3 +40,6 @@ class AutoDelChat(loader.Module):
         else:
             status = "включено" if self.config["enabled"] else "выключено"
             await message.edit(f"Автоматическое удаление сообщений сейчас {status}. Используйте 'on' или 'off' для переключения. <emoji document_id=5879785854284599288>ℹ️</emoji>")
+
+# Добавляем версию модуля в класс
+AutoDelChat.__version__ = "1.1"
