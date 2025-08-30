@@ -1,6 +1,6 @@
 # meta developer: @Androfon_AI
 # meta name: Шашки
-# meta version: 1.0.8 # Обновляем версию после исправления ошибки
+# meta version: 1.2.0 # Обновляем версию после добавления нового функционала
 
 import asyncio, html, random
 from .. import loader, utils
@@ -12,8 +12,8 @@ WHITE_KING = 3
 BLACK_KING = 4
 
 PIECE_EMOJIS = {
-    EMPTY: " ",
-    "light": ".",
+    EMPTY: ".",
+    "light": " ",
     WHITE_MAN: "⚪",
     BLACK_MAN: "⚫",
     WHITE_KING: "🌝",
@@ -28,8 +28,8 @@ class CheckersBoard:
         self._board = [[EMPTY for _ in range(8)] for _ in range(8)]
         self._setup_initial_pieces()
         self.current_player = "white"
-        self.mandatory_capture_from_pos = None
-        self.mandatory_captures_enabled = mandatory_captures_enabled
+        self.mandatory_capture_from_pos = None # Позиция, с которой ОБЯЗАТЕЛЕН следующий захват (для мульти-прыжка)
+        self.mandatory_captures_enabled = mandatory_captures_enabled # Глобальная настройка обязательных взятий
 
     def _setup_initial_pieces(self):
         for r in range(8):
@@ -63,7 +63,7 @@ class CheckersBoard:
         return "black" if color == "white" else "white"
 
     def _get_moves_for_piece(self, r, c):
-        moves = []
+        moves = [] # Список кортежей: (start_r, start_c, end_r, end_c, is_capture)
         piece = self.get_piece_at(r, c)
         player_color = self._get_player_color(piece)
         opponent_color = self._get_opponent_color(player_color)
@@ -139,8 +139,7 @@ class CheckersBoard:
         if self.mandatory_capture_from_pos:
             r, c = self.mandatory_capture_from_pos
             # Возвращаем только захваты из этой конкретной позиции
-            # Важно: здесь нужно использовать _get_moves_for_piece, так как get_all_possible_moves
-            # вызывается рекурсивно, и _get_moves_for_piece не содержит логики mandatory_capture_from_pos
+            # Важно: _get_moves_for_piece(r,c) уже вернет только те ходы, которые возможны для данной фигуры.
             return [m for m in self._get_moves_for_piece(r, c) if m[4]]
             
         for r in range(8):
@@ -181,6 +180,7 @@ class CheckersBoard:
                 dc_norm = dc_diff // abs(dc_diff)
 
             # Итерируем по пути, чтобы найти и удалить захваченную фигуру
+            # Начинаем с клетки СРАЗУ ПОСЛЕ стартовой позиции
             current_r, current_c = start_r + dr_norm, start_c + dc_norm
             while self._is_valid_coord(current_r, current_c) and (current_r, current_c) != (end_r, end_c):
                 if self.get_piece_at(current_r, current_c) != EMPTY:
@@ -194,35 +194,37 @@ class CheckersBoard:
         return is_capture_move
 
     def make_move(self, start_r, start_c, end_r, end_c, is_capture_move):
-        piece = self.get_piece_at(start_r, start_c)
-        
+        # piece_before_move = self.get_piece_at(start_r, start_c) # Эта переменная не используется, можно удалить
+
         self._execute_move(start_r, start_c, end_r, end_c, is_capture_move)
         
-        # Превращение в дамки
-        # Происходит после хода. Если шашка превратилась в дамку и может продолжить захват, она продолжит как дамка.
-        if piece == WHITE_MAN and end_r == 0:
+        # Проверяем и выполняем превращение в дамку
+        # Важно: превращение происходит сразу после хода, и если шашка становится дамкой,
+        # дальнейшие захваты (если есть) она будет выполнять уже как дамка.
+        piece_after_move = self.get_piece_at(end_r, end_c) # Получаем фигуру на новой позиции
+        if piece_after_move == WHITE_MAN and end_r == 0:
             self._set_piece_at(end_r, end_c, WHITE_KING)
-            piece = WHITE_KING # Обновляем piece, чтобы check_for_further_captures использовал правильный тип
-        elif piece == BLACK_MAN and end_r == 7:
+            piece_after_move = WHITE_KING # Обновляем тип фигуры для дальнейших проверок
+        elif piece_after_move == BLACK_MAN and end_r == 7:
             self._set_piece_at(end_r, end_c, BLACK_KING)
-            piece = BLACK_KING # Обновляем piece
+            piece_after_move = BLACK_KING # Обновляем тип фигуры
 
         if is_capture_move:
             # Проверяем, возможны ли дальнейшие захваты с новой позиции (мульти-прыжок)
-            # Мульти-прыжок всегда обязателен, независимо от self.mandatory_captures_enabled
-            # Важно: здесь мы должны использовать _get_moves_for_piece, а не get_all_possible_moves,
-            # так как get_all_possible_moves уже учитывает mandatory_capture_from_pos,
-            # и мы хотим проверить только для текущей фигуры.
+            # При этом используем piece_after_move, чтобы учесть превращение в дамку
+            self.mandatory_capture_from_pos = (end_r, end_c) # Временно устанавливаем, чтобы _get_moves_for_piece работала корректно
             further_captures = [m for m in self._get_moves_for_piece(end_r, end_c) if m[4]]
             
             if further_captures:
-                self.mandatory_capture_from_pos = (end_r, end_c)
+                # Если возможны дальнейшие захваты, фигура остается выбранной, и ход не переходит
                 return True # Возвращаем True, если возможны дальнейшие захваты
             else:
+                # Захваты закончились, сбрасываем обязательный захват и переключаем ход
                 self.mandatory_capture_from_pos = None
                 self.switch_turn()
                 return False # Захваты закончились, ход переходит
         else:
+            # Обычный ход, сбрасываем обязательный захват (если был) и переключаем ход
             self.mandatory_capture_from_pos = None
             self.switch_turn()
             return False # Обычный ход, ход переходит
@@ -261,17 +263,20 @@ class CheckersBoard:
             row_emojis = []
             for c in range(8):
                 piece = self.get_piece_at(r, c)
-                emoji = PIECE_EMOJIS[piece]
-
+                
+                # Базовый эмодзи для клетки
+                # Если клетка светлая, используем эмодзи светлой клетки.
+                # Если темная, используем эмодзи фигуры или пустого места.
+                current_cell_emoji = PIECE_EMOJIS['light'] if (r + c) % 2 == 0 else PIECE_EMOJIS[piece]
+                
+                # Переопределяем, если клетка выбрана или является целью хода
                 if (r, c) == selected_pos:
-                    emoji = PIECE_EMOJIS['selected']
+                    current_cell_emoji = PIECE_EMOJIS['selected']
                 elif (r, c) in possible_move_targets_map:
                     is_capture_move = possible_move_targets_map[(r, c)]
-                    emoji = PIECE_EMOJIS['capture_target'] if is_capture_move else PIECE_EMOJIS['move_target']
-                elif (r + c) % 2 == 0: # Светлые клетки (если пустые и не являются целью/выбранной)
-                    emoji = PIECE_EMOJIS['light']
+                    current_cell_emoji = PIECE_EMOJIS['capture_target'] if is_capture_move else PIECE_EMOJIS['move_target']
                 
-                row_emojis.append(emoji)
+                row_emojis.append(current_cell_emoji)
             board_emojis.append(row_emojis)
         return board_emojis
     
@@ -314,28 +319,28 @@ class Checkers(loader.Module):
     }
 
     async def client_ready(self):
-        # Инициализация переменных состояния игры
-        await self.purgeSelf() 
+        # Инициализация переменных состояния игры при загрузке/перезагрузке модуля
         # self.db уже доступен как атрибут от loader.Module, поэтому self.db = self.get_db() не требуется.
+        await self.purgeSelf() # Очистка состояния при запуске модуля
 
     async def purgeSelf(self):
         """Сбрасывает все переменные состояния игры."""
         self._board_obj = None
-        self._game_message = None
+        self._game_message = None # Изначальное сообщение с командой, которое может быть отредактировано в инлайн-форму.
         self._game_chat_id = None
         self._selected_piece_pos = None
         self._possible_moves_for_selected = []
         self.colorName = "рандом" # Отображаемое имя цвета хоста
         self.host_color = None # Фактический цвет хоста (white/black)
         self.game_running = False
-        self.game_reason_ended = None
+        self.game_reason_ended = None # Добавляем поле для причины завершения игры
         self.players_ids = []
         self.host_id = None
-        self.opponent_id = None
-        self.opponent_name = None
+        self.opponent_id = None # Может быть None, если игра "любой желающий"
+        self.opponent_name = None # Может быть "любой желающий", если игра "любой желающий"
         self.player_white_id = None
         self.player_black_id = None
-        self._game_board_call = None
+        self._game_board_call = None # Сохраняем 'call' объект от inline.form/accept_game для редактирования доски
         # Загружаем настройку обязательных взятий из базы данных или используем значение по умолчанию
         self.mandatory_captures_enabled = self.db.get("checkers_module", "mandatory_captures_enabled", True)
 
@@ -354,10 +359,22 @@ class Checkers(loader.Module):
         else:
             current_host_color_display = "рандом"
 
+        # Формируем текст приглашения, учитывая, есть ли конкретный оппонент или "любой желающий"
+        opponent_name_display_for_settings = "любой желающий"
+        invite_text_prefix_for_settings = "Вас приглашают сыграть партию в шашки, примите?"
+        if self.opponent_id: # Если конкретный оппонент уже выбран или изначально указан
+            try:
+                opponent_entity = await self.client.get_entity(self.opponent_id)
+                opponent_name_display_for_settings = html.escape(opponent_entity.first_name)
+            except Exception:
+                pass # Fallback if entity not found
+            invite_text_prefix_for_settings = f"<a href='tg://user?id={self.opponent_id}'>{opponent_name_display_for_settings}</a>, вас пригласили сыграть партию в шашки, примите?"
+
         await call.edit(
-            text=f"Настройки этой партии\n"
-                 f"| - > Хост играет за {current_host_color_display} цвет\n"
-                 f"| - > Обязательные взятия: {'Включены' if self.mandatory_captures_enabled else 'Отключены'}",
+            text=f"{invite_text_prefix_for_settings}\n-- --\n"
+                 f"Текущие настройки:\n"
+                 f"| - > • Хост играет за {current_host_color_display} цвет\n"
+                 f"| - > • Обязательные взятия: {'Включены' if self.mandatory_captures_enabled else 'Отключены'}",
             reply_markup=[
                 [
                     {"text":f"Цвет (хоста): {current_host_color_display}","callback":self.set_color}
@@ -387,13 +404,16 @@ class Checkers(loader.Module):
             return
         
         # Обновляем имя оппонента, если оно могло измениться или не было установлено
-        opponent_name_display = "Оппонент"
+        opponent_name_display = "любой желающий"
+        invite_text_prefix = "Вас приглашают сыграть партию в шашки, примите?"
+
         if self.opponent_id:
             try:
                 opponent_entity = await self.client.get_entity(self.opponent_id)
                 opponent_name_display = html.escape(opponent_entity.first_name)
             except Exception:
                 pass # Fallback if entity not found
+            invite_text_prefix = f"<a href='tg://user?id={self.opponent_id}'>{opponent_name_display}</a>, вас пригласили сыграть партию в шашки, примите?"
 
         # Обновляем текст для корректного отображения текущих настроек
         current_host_color_display = self.colorName
@@ -405,7 +425,7 @@ class Checkers(loader.Module):
             current_host_color_display = "рандом"
 
         await call.edit(
-            text=f"<a href='tg://user?id={self.opponent_id}'>{opponent_name_display}</a>, вас пригласили сыграть партию в шашки, примите?\n-- --\n"
+            text=f"{invite_text_prefix}\n-- --\n"
                  f"Текущие настройки:\n"
                  f"| - > • Хост играет за {current_host_color_display} цвет\n"
                  f"| - > • Обязательные взятия: {'Включены' if self.mandatory_captures_enabled else 'Отключены'}",
@@ -462,45 +482,54 @@ class Checkers(loader.Module):
 
     @loader.command() 
     async def checkers(self, message):
-        """[reply/username/id] предложить человеку сыграть партию в чате"""
-        if self._board_obj:
+        """[reply/username/id] предложить человеку сыграть партию в чате. Без аргументов - любой желающий."""
+        if self._board_obj: # Проверяем, не запущена ли уже игра
             await message.edit("Партия уже где-то запущена. Завершите или сбросьте её с <code>.stopgame</code>")
             return
-        await self.purgeSelf()
+        await self.purgeSelf() # Сбрасываем состояние перед началом новой игры
         self._game_message = message
         self._game_chat_id = message.chat_id
         self.host_id = message.sender_id
 
-        opponent = None
+        opponent_found = False
+        invite_text_prefix = ""
+
         if message.is_reply:
             r = await message.get_reply_message()
             opponent = r.sender
             self.opponent_id = opponent.id
             self.opponent_name = html.escape(opponent.first_name)
+            opponent_found = True
         else:
             args = utils.get_args(message)
-            if len(args) == 0:
-                await message.edit("Вы не указали с кем играть")
-                return
-            opponent_str = args[0]
-            try:
-                if opponent_str.isdigit():
-                    self.opponent_id = int(opponent_str)
-                    opponent = await self.client.get_entity(self.opponent_id)
-                    self.opponent_name = html.escape(opponent.first_name)
-                else:
-                    opponent = await self.client.get_entity(opponent_str)
-                    self.opponent_name = html.escape(opponent.first_name)
-                    self.opponent_id = opponent.id
-            except Exception:
-                await message.edit("Я не нахожу такого пользователя")
-                return
+            if len(args) > 0:
+                opponent_str = args[0]
+                try:
+                    if opponent_str.isdigit():
+                        self.opponent_id = int(opponent_str)
+                        opponent = await self.client.get_entity(self.opponent_id)
+                        self.opponent_name = html.escape(opponent.first_name)
+                    else:
+                        opponent = await self.client.get_entity(opponent_str)
+                        self.opponent_name = html.escape(opponent.first_name)
+                        self.opponent_id = opponent.id
+                    opponent_found = True
+                except Exception:
+                    await message.edit("Я не нахожу такого пользователя")
+                    return
+            # Если args пустой, opponent_found остается False, self.opponent_id и self.opponent_name остаются None
         
-        if self.opponent_id == self._game_message.sender_id:
-            await message.edit("Одиночные шашки? Простите, нет.")
-            return
-
-        self.players_ids = [self.opponent_id, self._game_message.sender_id]
+        if opponent_found:
+            if self.opponent_id == self._game_message.sender_id:
+                await message.edit("Одиночные шашки? Простите, нет.")
+                return
+            self.players_ids = [self.opponent_id, self._game_message.sender_id]
+            invite_text_prefix = f"<a href='tg://user?id={self.opponent_id}'>{self.opponent_name}</a>, вас пригласили сыграть партию в шашки, примите?"
+        else: # Если оппонент не был указан, игра для "любого желающего"
+            self.opponent_id = None # Явно устанавливаем None для "любой желающий"
+            self.opponent_name = "любой желающий"
+            # players_ids пока не заполняем, так как оппонент не определен
+            invite_text_prefix = "Вас приглашают сыграть партию в шашки, примите?"
         
         current_host_color_display = self.colorName
         if self.host_color == "white":
@@ -512,7 +541,7 @@ class Checkers(loader.Module):
 
         await self.inline.form(
             message = message,
-            text = f"<a href='tg://user?id={self.opponent_id}'>{self.opponent_name}</a>, вас пригласили сыграть партию в шашки, примите?\n-- --\n"
+            text = f"{invite_text_prefix}\n-- --\n"
                    f"Текущие настройки:\n"
                    f"| - > • Хост играет за {current_host_color_display} цвет\n"
                    f"| - > • Обязательные взятия: {'Включены' if self.mandatory_captures_enabled else 'Отключены'}",
@@ -531,14 +560,25 @@ class Checkers(loader.Module):
 
     @loader.command() 
     async def stopgame(self, message):
-        """Досрочное завершение партии"""
-        if self._game_board_call and message.from_user.id not in self.players_ids and message.from_user.id != self.host_id:
-            await message.edit("Вы не игрок этой партии.")
+        """Досрочное завершение партии (для хоста или любого игрока)"""
+        # Разрешаем остановку хосту или любому из игроков, если игра уже началась
+        # Если игра еще не началась (opponent_id is None), только хост может остановить
+        if not self.game_running and self.opponent_id is None: # Игра "любой желающий" еще не началась
+            if message.from_user.id != self.host_id:
+                await message.edit("Вы не организатор этой партии и не можете её остановить до начала.")
+                return
+        elif message.from_user.id != self.host_id and message.from_user.id not in self.players_ids:
+            await message.edit("Вы не игрок этой партии и не её организатор.")
             return
 
-        if self._game_board_call:
+        if self._game_board_call: # Проверяем, есть ли активная инлайн-форма
             try:
                 await self._game_board_call.edit(text="Партия была остановлена.")
+            except Exception:
+                pass # Игнорируем ошибку, если сообщение уже удалено или недоступно
+        elif self._game_message: # Если инлайн-форма не была создана, но есть исходное сообщение
+            try:
+                await self._game_message.edit(text="Партия была остановлена.")
             except Exception:
                 pass
         
@@ -548,16 +588,33 @@ class Checkers(loader.Module):
 
     async def accept_game(self, call, data):
         if call.from_user.id == self.host_id:
+            if self.opponent_id is None and data == 'n': # Хост отклоняет игру "любой желающий"
+                await call.edit(text="Партия отменена.")
+                await self.purgeSelf()
+                return
             await call.answer("Дай человеку ответить!")
-            return
-        if call.from_user.id != self.opponent_id:
-            await call.answer("Не тебе предлагают игру!")
             return
         
         if data == 'y':
+            if self.opponent_id is None: # Если игра для "любого желающего" и это первый, кто принял
+                self.opponent_id = call.from_user.id
+                try:
+                    opponent_entity = await self.client.get_entity(self.opponent_id)
+                    self.opponent_name = html.escape(opponent_entity.first_name)
+                except Exception:
+                    self.opponent_name = "Неизвестный игрок"
+                await call.answer(f"Вы присоединились к игре как {self.opponent_name}!")
+                self.players_ids = [self.opponent_id, self.host_id] # Теперь заполняем players_ids
+            elif call.from_user.id != self.opponent_id: # Конкретное приглашение, но принял не тот пользователь
+                await call.answer("Не тебе предлагают игру!")
+                return
+            
+            # Если дошли сюда, значит игрок, принявший вызов, является либо назначенным оппонентом,
+            # либо первым, кто принял вызов в игре "любой желающий".
+            
             self._board_obj = CheckersBoard(mandatory_captures_enabled=self.mandatory_captures_enabled) 
             
-            if not self.host_color:
+            if not self.host_color: # Если хост выбрал "рандом"
                 await call.edit(text="Выбираю стороны...")
                 await asyncio.sleep(0.5)
                 self.host_color = self.ranColor()
@@ -565,7 +622,7 @@ class Checkers(loader.Module):
             if self.host_color == "white":
                 self.player_white_id = self.host_id
                 self.player_black_id = self.opponent_id
-            else:
+            else: # host_color == "black"
                 self.player_white_id = self.opponent_id
                 self.player_black_id = self.host_id
 
@@ -574,12 +631,19 @@ class Checkers(loader.Module):
             await asyncio.sleep(0.5)
             
             self.game_running = True
-            self._game_board_call = call
+            self._game_board_call = call # Сохраняем объект 'call' для дальнейшего редактирования сообщения
             
             await call.edit(text="Для лучшего различия фигур включите светлую тему!")
             await asyncio.sleep(2.5)
             await self.render_board(text, call)
-        else:
+        else: # data == 'n' (отклонено)
+            if self.opponent_id is None: # Если игра "любой желающий", и не хост отклоняет
+                await call.answer("Только организатор может отменить игру, к которой может присоединиться любой желающий.")
+                return
+            elif call.from_user.id != self.opponent_id: # Конкретное приглашение, но отклонил не тот пользователь
+                await call.answer("Не тебе предлагают игру!")
+                return
+            
             await call.edit(text="Отклонено.")
             await self.purgeSelf()
 
@@ -598,7 +662,8 @@ class Checkers(loader.Module):
                 row_btns.append({"text": board_emojis[r][c], "callback": self.handle_click, "args":(r, c,)})
             btns.append(row_btns)
 
-        btns.append([{"text": "Остановить игру", "callback": self.stop_game_inline}])
+        # Добавлена кнопка "Сдаться"
+        btns.append([{"text": "Сдаться", "callback": self.surrender_game}])
 
         await call.edit(
             text = text,
@@ -606,39 +671,72 @@ class Checkers(loader.Module):
             disable_security = True
         )
     
-    async def stop_game_inline(self, call):
-        if call.from_user.id not in self.players_ids and call.from_user.id != self.host_id:
-            await call.answer("Вы не игрок этой партии.")
-            return
+    async def surrender_game(self, call):
+        user_id = call.from_user.id
         
-        await call.edit("Партия была остановлена игроком.")
-        await self.purgeSelf()
+        # Только игроки (белые или черные) могут сдаться.
+        # Хост может использовать .stopgame, если он не играет за одну из сторон.
+        if user_id not in [self.player_white_id, self.player_black_id]:
+            await call.answer("Вы не игрок этой партии и не можете сдаться. Используйте .stopgame для принудительной остановки.")
+            return
+
+        surrendering_player_name = "Неизвестный игрок"
+        try:
+            surrendering_player_entity = await self.client.get_entity(user_id)
+            surrendering_player_name = html.escape(surrendering_player_entity.first_name)
+        except Exception:
+            pass
+
+        winner_id = None
+        winner_color_text = ""
+        if user_id == self.player_white_id:
+            winner_id = self.player_black_id
+            winner_color_text = "черных"
+        elif user_id == self.player_black_id:
+            winner_id = self.player_white_id
+            winner_color_text = "белых"
+        
+        winner_name = "Оппонент"
+        if winner_id:
+            try:
+                winner_entity = await self.client.get_entity(winner_id)
+                winner_name = html.escape(winner_entity.first_name)
+            except Exception:
+                pass
+
+        surrender_message = (
+            f"Партия завершена: <a href='tg://user?id={user_id}'>{surrendering_player_name}</a> сдался(лась).\n"
+            f"Победил(а) <a href='tg://user?id={winner_id}'>{winner_name}</a> ({winner_color_text})!"
+        )
+
+        self.game_running = False
+        self.game_reason_ended = surrender_message # Сохраняем причину завершения игры
+        
+        await call.edit(surrender_message)
+        await self.purgeSelf() # Очищаем состояние после завершения игры
         
     async def handle_click(self, call, r, c):
         # 1. Проверка на завершение игры в самом начале
-        if not self._board_obj: # Если объект доски None, игра не активна или уже очищена
+        # Это предотвращает любые действия, если игра уже завершена, но сообщение еще активно.
+        if not self._board_obj or not self.game_running:
+            # Если _board_obj None, игра неактивна. Если game_running False, игра завершена.
             await call.answer("Игра не активна или завершена. Начните новую игру.")
-            await self.purgeSelf()
+            if self._board_obj: # Если _board_obj существует, но game_running False, значит игра завершилась, но состояние не очищено.
+                await self.purgeSelf() # Гарантируем очистку, если состояние некорректно
             return
 
         game_over_status = self._board_obj.is_game_over()
         if game_over_status:
             if self.game_running: # Если игра была активна, но только что завершилась
                 self.game_running = False
-                self.game_reason_ended = game_over_status
-                # Обновляем доску в последний раз с финальным статусом
-                await self.render_board(await self.get_game_status_text(), call)
+                self.game_reason_ended = game_over_status # Сохраняем причину
+                await self.render_board(await self.get_game_status_text(), call) # Обновляем доску в последний раз с финальным статусом
                 await self.purgeSelf() # ВАЖНО: Очищаем состояние ПОСЛЕ финального рендера
             await call.answer(f"Партия окончена: {game_over_status}. Для новой игры используйте .checkers")
-            return
+            return # Выходим, так как игра завершена
         
-        # Проверки на активную игру и принадлежность игрока
-        if not self.game_running: # Если game_running = False, но _board_obj существует (например, игра только что закончилась, но еще не очищена)
-            await call.answer("Игра завершена. Начните новую игру.")
-            await self.purgeSelf() # Гарантируем очистку, если состояние некорректно
-            return
-        
-        if call.from_user.id not in self.players_ids and call.from_user.id != self.host_id:
+        # 2. Проверки на принадлежность игрока и текущий ход
+        if call.from_user.id not in self.players_ids: 
             await call.answer("Партия не ваша!")
             return
         
@@ -651,7 +749,7 @@ class Checkers(loader.Module):
         player_color_at_click = self._board_obj._get_player_color(piece_at_click)
 
         if self._selected_piece_pos is None:
-            # Выбор фигуры
+            # Сценарий 1: Выбор фигуры
             if player_color_at_click == self._board_obj.current_player:
                 # Проверка на обязательный мульти-захват
                 if self._board_obj.mandatory_capture_from_pos and self._board_obj.mandatory_capture_from_pos != (r, c):
@@ -670,7 +768,7 @@ class Checkers(loader.Module):
             else:
                 await call.answer("Тут нет вашей шашки или это светлая клетка!")
         else:
-            # Попытка хода или отмена выбора
+            # Сценарий 2: Попытка хода или отмена выбора
             start_r, start_c = self._selected_piece_pos
             
             if (r, c) == (start_r, start_c):
@@ -689,6 +787,7 @@ class Checkers(loader.Module):
                     break
 
             if target_move_info:
+                # Выполняем ход
                 end_r, end_c, is_capture_move = target_move_info
                 made_capture_and_can_jump_again = self._board_obj.make_move(start_r, start_c, end_r, end_c, is_capture_move)
                 
@@ -707,7 +806,7 @@ class Checkers(loader.Module):
                 game_over_status_after_move = self._board_obj.is_game_over()
                 if game_over_status_after_move:
                     self.game_running = False
-                    self.game_reason_ended = game_over_status_after_move
+                    self.game_reason_ended = game_over_status_after_move # Сохраняем причину
                     await call.answer(f"Партия окончена: {game_over_status_after_move}")
                     await self.render_board(await self.get_game_status_text(), call) # Обновляем доску с финальным статусом
                     await self.purgeSelf() # Очищаем данные ПОСЛЕ окончания игры
@@ -741,22 +840,24 @@ class Checkers(loader.Module):
 
         game_over_status = self._board_obj.is_game_over()
         if game_over_status:
-            # Флаги game_running и game_reason_ended устанавливаются в handle_click при первом обнаружении завершения игры.
-            # Здесь мы просто отображаем статус.
+            # Если причина завершения уже установлена (например, из-за сдачи), используем ее
+            if self.game_reason_ended:
+                return self.game_reason_ended
             
+            # Иначе формируем сообщение о завершении по правилам
             winner_name = ""
             if "Победа белых" in game_over_status:
                 try:
                     winner_name = html.escape((await self.client.get_entity(self.player_white_id)).first_name)
+                    return f"Партия окончена: {game_over_status}\n\nПобедил(а) <a href='tg://user?id={self.player_white_id}'>{winner_name}</a> (белые)!"
                 except Exception:
-                    winner_name = "Белые"
-                return f"Партия окончена: {game_over_status}\n\nПобедил(а) {winner_name} (белые)!"
+                    return f"Партия окончена: {game_over_status}\n\nПобедил(а) Белые!"
             elif "Победа черных" in game_over_status:
                 try:
                     winner_name = html.escape((await self.client.get_entity(self.player_black_id)).first_name)
+                    return f"Партия окончена: {game_over_status}\n\nПобедил(а) <a href='tg://user?id={self.player_black_id}'>{winner_name}</a> (черные)!"
                 except Exception:
-                    winner_name = "Черные"
-                return f"Партия окончена: {game_over_status}\n\nПобедил(а) {winner_name} (черные)!"
+                    return f"Партия окончена: {game_over_status}\n\nПобедил(а) Черные!"
             return f"Партия окончена: {game_over_status}"
 
         white_player_name = "Белые"
@@ -781,12 +882,12 @@ class Checkers(loader.Module):
         except Exception:
             pass
         
-        status_text = f"♔ Белые - {white_player_name}\n♚ Чёрные - {black_player_name}\n\n"
+        status_text = f"♔ Белые - <a href='tg://user?id={self.player_white_id}'>{white_player_name}</a>\n♚ Чёрные - <a href='tg://user?id={self.player_black_id}'>{black_player_name}</a>\n\n"
         
         if self._board_obj.current_player == "white":
-            status_text += f"Ход белых ({current_player_name})"
+            status_text += f"Ход белых (<a href='tg://user?id={current_player_id}'>{current_player_name}</a>)"
         else:
-            status_text += f"Ход чёрных ({current_player_name})"
+            status_text += f"Ход чёрных (<a href='tg://user?id={current_player_id}'>{current_player_name}</a>)"
         
         status_text += f"\nОбязательные взятия: {'Включены' if self.mandatory_captures_enabled else 'Отключены'}"
 
@@ -796,13 +897,19 @@ class Checkers(loader.Module):
         return status_text
 
     async def outdated_game(self):
-        if self.game_running or self._board_obj:
-            if self._game_board_call:
+        # Эта функция вызывается, когда инлайн-форма становится неактивной (например, бот перезагрузился или сообщение было слишком старым).
+        if self.game_running or self._board_obj: # Если игра была запущена или состояние доски существовало
+            if self._game_board_call: # Если есть ссылка на инлайн-сообщение
                 try:
                     await self._game_board_call.edit(text="Партия устарела из-за отсутствия активности.")
                 except Exception:
+                    pass # Игнорируем ошибку, если сообщение уже удалено/недоступно
+            elif self._game_message: # Если инлайн-форма не была создана, но есть исходное сообщение
+                try:
+                    await self._game_message.edit(text="Партия устарела из-за отсутствия активности.")
+                except Exception:
                     pass
-            await self.purgeSelf()
+            await self.purgeSelf() # Очищаем состояние игры
 
     def ranColor(self):
         return "white" if random.randint(1,2) == 1 else "black"
